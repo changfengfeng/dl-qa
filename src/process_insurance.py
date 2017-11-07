@@ -5,6 +5,7 @@ sys.path.append("../dl-segmentor/src")
 import os
 from ner import Segmentor
 import tensorflow as tf
+import insurance_data
 
 FLAGS = tf.flags.FLAGS
 
@@ -31,21 +32,12 @@ def main(argc, argv):
     curDir = dirName
     for file in fileList:
       curFile = os.path.join(curDir, file)
-      print("processing:%s" % (curFile))
-      fp = open(curFile, mode="r", encoding="utf-8")
-      last_question = ""
-      for line in fp.readlines():
-        lines = line.strip().split("\t")
-        if len(lines) > 1:
-            question = lines[0].strip()
-            answer = lines[1].strip()
-            if question != last_question:
-                process_line(question, out)
-                last_question = question
-            process_line(lines[1], out)
-        else:
-            print(line)
-      fp.close()
+      if curFile.endswith("json.gz"):
+        print("processing:%s" % (curFile))
+        lines = insurance_data.generate_text(curFile)
+        for line in lines:
+            line = line.strip()
+            process_line(line, out)
       print(total_line, segmentor.long_line)
 
   out.close()

@@ -13,6 +13,7 @@ class QALoader:
     def __init__(self, word_vec_path, max_sequence_length):
         self.word_vec_path = word_vec_path
         self.max_sequence_length = max_sequence_length
+        # 80 cha per sub sentence
         self.segmentor = ner.Segmentor(FLAGS.user_dict_path, FLAGS.kcws_char_vocab_path,
             FLAGS.segment_model_path, "segment", 80)
 
@@ -37,11 +38,12 @@ class QALoader:
         return questions, answers, labels
 
     def sentence_to_ids(self, sentence):
-        if len(sentence) > self.max_sequence_length:
-            sentence = sentence[:self.max_sequence_length]
         tokens = self.segmentor.segment(sentence)
         ids = np.zeros(self.max_sequence_length, dtype="int32")
-        for i in range(len(tokens)):
+        max_token_num = len(tokens)
+        if max_token_num > self.max_sequence_length:
+            max_token_num = self.max_sequence_length
+        for i in range(max_token_num):
             token = tokens[i]
             if token in self.word_lexicon:
                 ids[i] = self.word_lexicon[token]
@@ -60,19 +62,56 @@ class TokenLoader:
         with open(filename, "r") as f:
             for line in f:
                 items = line.split(" ")
-                print(len(items))
                 assert len(items) == 2 * self.max_sequence_length + 1
                 questions.append(items[:self.max_sequence_length])
                 answers.append(items[self.max_sequence_length:2 *
                     self.max_sequence_length])
-                labels.append(items[-1])
+                label = int(items[-1])
+                labels.append(label)
 
         return np.array(questions, "int32"), np.array(answers, "int32"), np.array(labels, "int32")
 
-if __name__ == "__main__":
-    loader = QALoader("../dl-segmentor/data/ner_pepole_vec.txt", 50)
-    questions, answers, labels = loader.load_data("data/training.data")
-    for q in questions:
-        ids = loader.sentence_to_ids(q)
-        print(ids)
+    def load_true_false(self, filename):
+        """ load question, answer, wrong triples
+        """
+        questions = []
+        true_answers = []
+        wrong_answers = []
+        last_question = ""
+        true_answer = None
+        wrong_count = 0
 
+        with open(filename, "r") as f:
+            for line in f:
+
+                items = line.split(" ")
+                assert len(items) == 2 * self.max_sequence_length + 1
+                question = items[:self.max_sequence_length]
+                answer = items[self.max_sequence_length:-1]
+                label = int(items[-1])
+
+                question_id = "".join(question)
+                if question_id != last_question:
+                    if true_answer != None:
+                        true_answers.extend([true_answer] * wrong_count)
+                    elif last_question != "":
+                        questions = questions[:-wrong_count]
+                        wrong_answers = wrong_answers[:-wrong_count]
+                    true_answer = None
+                    last_question = question_id
+                    wrong_count = 0
+
+                if label == 0:
+                    wrong_count += 1
+                    wrong_answers.append(answer)
+                    questions.append(question)
+                else:
+                    true_answer = answer
+
+        if true_answer != None:
+            true_answers.extend([true_answer] * wrong_count)
+
+        assert len(questions) == len(true_answers)
+        assert len(questions) == len(wrong_answers)
+
+        return np.array(questions, "int32"), np.array(true_answers, "int32"), np.array(wrong_answers, "int32")
